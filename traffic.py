@@ -128,6 +128,19 @@ class TrafficDual(object):
         for i in range(self.N):
             for j in range(1):
                 x[i, varphi_idx[i,j]] = 1
+        return x
+
+    @property
+    def objective_value(self):
+        x = np.zeros((self.N, self.M))
+        varphi = self.pij - self.lamb
+        varphi_idx = bn.argpartition(-varphi, 1, -1)
+        for i in range(self.N):
+            for j in range(1):
+                x[i, varphi_idx[i,j]] = 1
+        return np.sum(self.pij * x)
+
+    
 
     def optimize(self, optimizer_name = "adam", tolx=1e-4, tolf=1e-4, nitermax = 10000):
 
@@ -201,7 +214,7 @@ class TrafficDual(object):
             mold = mnew
             vold = vnew
 
-            self.logger.info(f"{niter}th iteration \t theta: {theta_old} \
+            self.logger.debug(f"{niter}th iteration \t theta: {theta_old} \
                 obj func: {theta_new} \t grad: {g}")
 
         self.logger.warning("EXCEED THE MAXIMUM ITERATION NUMBERS!")
@@ -247,11 +260,22 @@ class TrafficMIP(object):
 
         self.model.optimize()
 
+def optimality(q, qs):
+    return 1 - np.abs(q - qs)/qs
 
 
 if __name__ == "__main__":
 
     para = TrafficPara(100, 10, 0.01)
     model_dual = TrafficDual(para)
+    model_dual.optimize()
     model_mip  = TrafficMIP(para)
+
+    q  = model_dual.objective_value
+    qs = model_mip.model.objective_value
+
+    print(optimality(q, qs))
+
+
+
 
