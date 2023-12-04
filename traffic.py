@@ -7,6 +7,7 @@ import math
 import random
 import matplotlib.pyplot as plt
 import mip
+import logging
 
 def linear_fun(x, x1, y1, x2, y2):
     """
@@ -177,6 +178,160 @@ def adam(theta0, pij, sj, N, verbose = True):
         print("Running time : {}\n".format(end - start))
         
     return theta_new
+
+class TrafficPara(object):
+    """
+    Online Traffic Model: parameters builder
+    """
+    def __init__(self, N, M, eps) -> None:
+        self._N = N
+        self._M = M
+        self._eps = eps
+        self._pij = np.random.rand(N, M)
+        self._sj = np.random.rand(M)
+        self._sj = self._sj/np.sum(self._sj) + eps
+    
+    @property
+    def N(self):
+        return self._N
+    
+    @property
+    def M(self):
+        return self._M
+
+    @property
+    def eps(self):
+        return self._eps
+    
+    @property
+    def pij(self):
+        return self._pij
+
+    @property
+    def sj(self):
+        return self._sj
+
+
+class Traffic(object):
+    """
+    """
+    def __init__(self, para : TrafficPara, filename='app.log', level = logging.INFO) -> None:
+        self.N = para.N()
+        self.M = para.M()
+        self.pij = para.pij()
+        self.sj = para.sj()
+        self.lamb = np.random.rand(self.M)
+
+        self.logger = logging.getLogger(filename)
+        self.logger.setLevel(level)
+        ch = logging.StreamHandler()
+        ch.setLevel(level)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        ch.setFormatter(formatter)
+        self.logger.addHandler(ch)
+
+    def func(self, lamb):
+        """Lagrangian function
+        """
+        varphi = self.pij - lamb
+        # partition, Partition array so that the 
+        # first 3 elements (indices 0, 1, 2) are the 
+        # smallest 3 elements (note, as in this example, 
+        # that the smallest 3 elements may not be sorted):
+        varphi = -bn.partition(-varphi, 1, -1)[:, 0]
+        return np.sum(varphi) * self.N * np.sum(lamb * self.sj)
+
+    def dfunc(self, lamb):
+        """derivative of Lagrangian
+        """
+        x = np.zeros((self.N, self.M))
+        varphi = self.pij - lamb
+        varphi_idx = bn.argpartition(-varphi, 1, -1)
+        for i in range(self.N):
+            for j in range(1):
+                x[i, varphi_idx[i, j]] = 1
+        return -np.sum(x, axis=0) + self.sj * self.N
+
+    def adam(self, tolx=1e-4, tolf=1e-4, nitermax = 10000):
+        """
+        Adam algorithm to find the optimal value
+        """
+        theta0 = self.lamb
+
+        start = time.time()
+
+        alpha, beta1, beta2, eps = 0.001, 0.9, 0.999, 1e-8
+        beta1powert, beta2powert = 1.0, 1.0
+
+        niter = 0
+    
+        theta_old = theta0 
+        ndim = len(theta0)
+        mold = np.zeros(ndim)
+        vold = np.zeros(ndim)
+
+        fold = self.func(theta0)
+
+        while niter < nitermax:
+
+            self.logger.debug(f"Iteration: {niter}")
+            niter += 1
+
+            g = dfunc()
+            mnew = beta1 * mold + (1-beta1)*g
+            vnew = beta2 * vold + (1-beta2)*g*g
+        
+            beta1powert *= beta1
+            beta2powert *= beta2
+        
+            mhat = mnew/(1 - beta1powert)
+            vhat = vnew/(1 - beta2powert)
+        
+            theta_new = theta_old - alpha * mhat / (np.sqrt(vhat) + eps)
+
+            self.logger.debug(f"theta_old: {theta_old}")
+            self.logger.debug(f"theta_new: {theta_new}")
+
+            theta_new[theta_new<0.0] = 0.0
+
+            if np.sqrt(np.inner(theta_new - theta_old, theta_new - theta_old)) < tolx:
+
+                end = time.time()
+                self.logger.info(f"Exit from gradient")
+                self.logger.info(f"Running time: {end - start}")
+                return theta_new
+
+            self.logger.debug(f"fold: {fold}")
+            fnew = func(theta_new)
+            self.logger.debug(f"fnew: {fnew}")
+
+            if np.abs(fold - fnew) < tolf:
+                end = time.time()
+                self.logger.info(f"Exit from function")
+                self.logger.info(f"Running time: {end - start}")
+                return theta_new
+
+            theta_old = theta_new
+            fold = fnew
+            mold = mnew
+            vold = vnew
+
+            self.logger.info(f"{niter}th iteration \t theta: {theta_old} \
+                obj func: {theta_new} \t grad: {g}")
+
+        self.logger.warning("EXCEED THE MAXIMUM ITERATION NUMBERS!")
+        end = time.time()
+        self.logger.warning(f"Running time : {end - start}")
+
+        return theta_new
+
+            
+
+
+    
+
+
+
 
 
 if __name__ == "__main__":
