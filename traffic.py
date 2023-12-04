@@ -47,138 +47,6 @@ def noiser(x, n, std_dev):
     """
     return x + np.random.normal(0.0, std_dev, n)
 
-def func(lamb, pij, sj, N):
-    """Lagrangian function
-    """
-    varphi = pij - lamb
-    # partition, Partition array so that the 
-    # first 3 elements (indices 0, 1, 2) are the 
-    # smallest 3 elements (note, as in this example, 
-    # that the smallest 3 elements may not be sorted):
-    varphi = -bn.partition(-varphi, 1, -1)[:, 0]
-    return np.sum(varphi) * N * np.sum(lamb * sj)
-
-def dfunc(lamb, pij, sj, N):
-    """derivative of Lagrangian
-    """
-    x = np.zeros((N, M))
-    varphi = pij - lamb
-    varphi_idx = bn.argpartition(-varphi, 1, -1)
-    for i in range(N):
-        for j in range(1):
-            x[i, varphi_idx[i, j]] = 1
-    return -np.sum(x, axis=0) + sj * N
-
-def objective(pij, x):
-    """Find the value of the objective function
-    given the decision variables"""
-    return np.sum(pij * x)
-
-def objective_lamb(lamb, pij):
-    """Find the value of the objective function
-    given the Lagrangian multipiliers"""
-    x = np.zeros((N, M))
-    varphi = pij - lamb
-    varphi_idx = bn.argpartition(-varphi, 1, -1)
-    for i in range(N):
-        for j in range(1):
-            x[i, varphi_idx[i,j]] = 1
-    return np.sum(pij * x)
-
-# Check whether satisfies the constraints or not.
-def checkConstraint(lamb, pij, sj, N):
-    """check"""
-    x = np.zeros((N, M))
-    varphi = pij - lamb
-    varphi_idx = bn.argpartition(-varphi, 1, -1)
-    for i in range(N):
-        for j in range(1):
-            x[i, varphi_idx[i,j]] = 1
-    return np.sum(x, axis = 0) - sj*N
-
-def adam(theta0, pij, sj, N, verbose = True):
-    """
-    """
-    if verbose:
-        start = time.time()
-    
-    alpha, beta1, beta2, eps = 0.001, 0.9, 0.999, 1e-8
-    beta1powert, beta2powert = 1.0, 1.0
-    
-    nitermax = 10000
-    niter = 0
-    
-    theta_old = theta0 
-    ndim = len(theta0)
-    mold = np.zeros(ndim)
-    vold = np.zeros(ndim)
-    
-    tolx = 1e-4
-    tolf = 1e-4
-    
-    fold = func(theta0, pij, sj, N)
-    
-    while niter < nitermax:
-        
-        if niter % 100 == 0:
-            print("iteration: {0}".format(niter))
-        
-        niter += 1
-        
-        g = dfunc(theta_old, pij, sj, N)
-        mnew = beta1 * mold + (1-beta1)*g
-        vnew = beta2 * vold + (1-beta2)*g*g
-        
-        beta1powert *= beta1
-        beta2powert *= beta2
-        
-        mhat = mnew/(1 - beta1powert)
-        vhat = vnew/(1 - beta2powert)
-        
-        theta_new = theta_old - alpha * mhat / (np.sqrt(vhat) + eps)
-        
-        if niter % 100 == 0:
-            print("theta_old: {0}".format(theta_old))
-            print("theta_new: {0}".format(theta_new))
-        
-        theta_new[theta_new < 0.0] = 0.0
-        
-        if np.sqrt(np.inner(theta_new - theta_old, theta_new - theta_old)) < tolx:
-
-            if verbose:
-                end = time.time()
-                print("Running time: {}\n".format(end - start))
-            return theta_new
-        
-        if niter%100 == 0:
-            print("fold : {0}".format(fold))
-        fnew = func(theta_new, pij, sj, N)
-        if niter % 100 == 0:
-            print("fnew : {0}".format(fnew))
-        if np.abs(fold - fnew) < tolf:
-            print("Here")
-            if verbose:
-                end = time.time()
-                print("Running time: {}\n".format(end - start))
-            return theta_new
-        
-        theta_old = theta_new
-        fold = fnew
-        mold = mnew
-        vold = vnew
-        
-                
-        if verbose and niter%100 == 0:
-            print("{0}th iteration \t theta: {1} obj func: {2} \t grad: {3}"
-                  .format(niter, theta_old, fold, g))
-            
-    print("EXCEED THE MAXIMUM ITERATION NUMBERS!")
-    if verbose:
-        end = time.time()
-        print("Running time : {}\n".format(end - start))
-        
-    return theta_new
-
 class TrafficPara(object):
     """
     Online Traffic Model: parameters builder
@@ -212,14 +80,14 @@ class TrafficPara(object):
         return self._sj
 
 
-class Traffic(object):
+class TrafficDual(object):
     """
     """
     def __init__(self, para : TrafficPara, filename='app.log', level = logging.INFO) -> None:
-        self.N = para.N()
-        self.M = para.M()
-        self.pij = para.pij()
-        self.sj = para.sj()
+        self.N = para.N
+        self.M = para.M
+        self.pij = para.pij
+        self.sj = para.sj
         self.lamb = np.random.rand(self.M)
 
         self.logger = logging.getLogger(filename)
@@ -252,6 +120,23 @@ class Traffic(object):
                 x[i, varphi_idx[i, j]] = 1
         return -np.sum(x, axis=0) + self.sj * self.N
 
+    @property
+    def x(self):
+        x = np.zeros((self.N, self.M))
+        varphi = self.pij - self.lamb
+        varphi_idx = bn.argpartition(-varphi, 1, -1)
+        for i in range(self.N):
+            for j in range(1):
+                x[i, varphi_idx[i,j]] = 1
+
+    def optimize(self, optimizer_name = "adam", tolx=1e-4, tolf=1e-4, nitermax = 10000):
+
+        optimizers = {
+            "adam": self.adam
+        }
+        optimizer = optimizers[optimizer_name]
+        self.lamb = optimizer(tolx, tolf, nitermax)
+
     def adam(self, tolx=1e-4, tolf=1e-4, nitermax = 10000):
         """
         Adam algorithm to find the optimal value
@@ -277,7 +162,7 @@ class Traffic(object):
             self.logger.debug(f"Iteration: {niter}")
             niter += 1
 
-            g = dfunc()
+            g = self.dfunc(theta_old)
             mnew = beta1 * mold + (1-beta1)*g
             vnew = beta2 * vold + (1-beta2)*g*g
         
@@ -302,7 +187,7 @@ class Traffic(object):
                 return theta_new
 
             self.logger.debug(f"fold: {fold}")
-            fnew = func(theta_new)
+            fnew = self.func(theta_new)
             self.logger.debug(f"fnew: {fnew}")
 
             if np.abs(fold - fnew) < tolf:
@@ -325,15 +210,48 @@ class Traffic(object):
 
         return theta_new
 
-            
 
+class TrafficMIP(object):
+    """MIP solver
+    """
+    def __init__(self, para : TrafficPara, filename='mip.log', level = logging.INFO) -> None:
+        self.N = para.N
+        self.M = para.M
+        self.pij = para.pij
+        self.sj = para.sj
 
+        self.logger = logging.getLogger(filename)
+        self.logger.setLevel(level)
+        ch = logging.StreamHandler()
+        ch.setLevel(level)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        ch.setFormatter(formatter)
+        self.logger.addHandler(ch)
+
+        I = range(self.N)
+        V = range(self.M)
+
+        self.model = mip.Model()
+
+        self.x = [[self.model.add_var(var_type = mip.BINARY) for j in V] for i in I]
+
+        self.model.objective = mip.maximize(mip.xsum(self.pij[i][j] * self.x[i][j] for i in I for j in V))
+
+        # local constraints, only 3 benefits recommended for 
+        for i in I:
+            self.model += mip.xsum(self.x[i][j] for j in V) == 1
     
+        # global constraints, the coupons are limited by numbers
+        for j in V:
+            self.model += mip.xsum(self.x[i][j] for i in I) <= self.sj[j] * self.N
 
-
+        self.model.optimize()
 
 
 
 if __name__ == "__main__":
 
-    pass
+    para = TrafficPara(100, 10, 0.01)
+    model_dual = TrafficDual(para)
+    model_mip  = TrafficMIP(para)
+
