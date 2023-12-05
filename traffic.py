@@ -51,7 +51,8 @@ class TrafficPara(object):
     """
     Online Traffic Model: parameters builder
     """
-    def __init__(self, N, M, eps) -> None:
+    def __init__(self, N, M, eps, seed = 1337) -> None:
+        np.random.seed(seed)
         self._N = N
         self._M = M
         self._eps = eps
@@ -140,9 +141,16 @@ class TrafficDual(object):
                 x[i, varphi_idx[i,j]] = 1
         return np.sum(self.pij * x)
 
-    
+    def checkConstraint(self):
+        """check the violation the major constraint"""
+        return np.sum(self.x, axis=0) - self.sj * self.N
 
-    def optimize(self, optimizer_name = "adam", tolx=1e-4, tolf=1e-4, nitermax = 10000):
+    def checkAbsConstraint(self):
+        """check the magnitude of violation of the constraints"""
+        val = np.sum(self.x, axis=0) - self.sj * self.N
+        return np.sum(val[val > 0])/self.N
+
+    def optimize(self, optimizer_name = "adam", tolx=1e-5, tolf=1e-5, nitermax = 10000):
 
         optimizers = {
             "adam": self.adam
@@ -154,6 +162,8 @@ class TrafficDual(object):
         """
         Adam algorithm to find the optimal value
         """
+        self.logger.info(f"Iteration Begins!")
+
         theta0 = self.lamb
 
         start = time.time()
@@ -227,11 +237,14 @@ class TrafficDual(object):
 class TrafficMIP(object):
     """MIP solver
     """
-    def __init__(self, para : TrafficPara, filename='mip.log', level = logging.INFO) -> None:
+    def __init__(self, para : TrafficPara, filename='mip.log', level = logging.INFO,
+    maxseconds=300) -> None:
         self.N = para.N
         self.M = para.M
         self.pij = para.pij
         self.sj = para.sj
+
+        self.maxseconds = maxseconds
 
         self.logger = logging.getLogger(filename)
         self.logger.setLevel(level)
@@ -258,7 +271,21 @@ class TrafficMIP(object):
         for j in V:
             self.model += mip.xsum(self.x[i][j] for i in I) <= self.sj[j] * self.N
 
-        self.model.optimize()
+        self.model.optimize(max_seconds=maxseconds)
+
+    def checkAbsConstraint(self):
+        """check the magnitude of violation of the constraints
+        """
+        val = []
+        for j in range(self.M):
+            sumval = 0
+            for i in range(self.N):
+                sumval += self.x[i][j].x
+            val.append(sumval)
+        val = np.array(val)
+        val -= self.sj * self.N
+        return np.sum(val[val > 0])/self.N
+
 
 def optimality(q, qs):
     return 1 - np.abs(q - qs)/qs
@@ -266,14 +293,17 @@ def optimality(q, qs):
 
 if __name__ == "__main__":
 
-    para = TrafficPara(100, 10, 0.01)
+    para = TrafficPara(1000, 10, 0.01, 13)
     model_dual = TrafficDual(para)
     model_dual.optimize()
-    model_mip  = TrafficMIP(para)
+    print(model_dual.checkAbsConstraint())
+
+    model_mip  = TrafficMIP(para, maxseconds=30)
+    print(model_mip.checkAbsConstraint())
 
     q  = model_dual.objective_value
     qs = model_mip.model.objective_value
-
+    
     print(optimality(q, qs))
 
 
