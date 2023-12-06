@@ -2,6 +2,6 @@
 data
 *.json
 *.txt
-
+*.png
 __pycache__/
 *.out
