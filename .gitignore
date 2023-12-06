@@ -1,2 +1,7 @@
 *.log
 *.ipynb
+data
+*.json
+*.txt
+
+__pycache__/

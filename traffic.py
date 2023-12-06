@@ -57,7 +57,7 @@ class TrafficPara(object):
         self._M = M
         self._eps = eps
         self._pij = np.random.rand(N, M)
-        self._sj = np.random.rand(M)
+        self._sj = np.random.randint(0, N, M)
         self._sj = self._sj/np.sum(self._sj) + eps
     
     @property
