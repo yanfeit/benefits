@@ -1,11 +1,11 @@
 import os
 import time
 import numpy as np
-import scipy as sp
+
 import bottleneck as bn
 import math
 import random
-import matplotlib.pyplot as plt
+
 import mip
 import logging
 
